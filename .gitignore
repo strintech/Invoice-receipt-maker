@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Database
+data/*.sqlite
+data/*.sqlite-journal
+
+# Uploads (keep directory structure)
+uploads/*
+!uploads/.gitkeep
+
+# Environment
+.env
+.env.local
+
+# Build output
+client/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker
+.docker/
