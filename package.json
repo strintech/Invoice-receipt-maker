@@ -4,22 +4,25 @@
   "description": "A Node.js/Express web application for generating professional invoices and receipts",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "nodemon server/index.js",
-    "dev:client": "npm run dev --prefix client",
-    "build": "npm run build --prefix client",
-    "start": "NODE_ENV=production node server/index.js",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "nodemon backend/index.js",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "start": "NODE_ENV=production node backend/index.js",
+    "test": "node --test backend/services/bihupp.test.js backend/services/pdfLayouts.test.js backend/routes/auth.test.js frontend/src/i18n.test.js",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },
   "dependencies": {
-    "better-sqlite3": "^11.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "multer": "^1.4.5-lts.1",
+    "nodemailer": "^10.0.14",
+    "pg": "^8.23.1",
     "puppeteer": "^23.5.0",
+    "qrcode": "^1.5.4",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

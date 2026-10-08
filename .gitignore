@@ -1,9 +1,9 @@
 # Dependencies
 node_modules/
 
-# Database
-data/*.sqlite
-data/*.sqlite-journal
+# Database (keep directory structure)
+data/*
+!data/.gitkeep
 
 # Uploads (keep directory structure)
 uploads/*
@@ -14,7 +14,7 @@ uploads/*
 .env.local
 
 # Build output
-client/dist/
+frontend/dist/
 
 # IDE
 .vscode/

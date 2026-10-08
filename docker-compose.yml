@@ -1,22 +1,55 @@
 services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      - POSTGRES_DB=invoices
+      - POSTGRES_USER=invoices
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-invoices}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5432:5432"   # local only, for `npm run dev` and the SQLite import
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U invoices -d invoices"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Test mail server: catches every email, UI on http://localhost:8025. Remove in production.
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "127.0.0.1:8025:8025"   # web UI
+      - "127.0.0.1:1025:1025"   # SMTP, for `npm run dev`
+    restart: unless-stopped
+
   app:
     build: .
     container_name: invoice-receipt-maker
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/app/data
       - ./uploads:/app/uploads
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_PATH=/app/data/db.sqlite
+      - DATABASE_URL=postgres://invoices:${POSTGRES_PASSWORD:-invoices}@db:5432/invoices
       - UPLOAD_DIR=/app/uploads
       - PDF_TIMEOUT=30000
+      - APP_URL=${APP_URL:-http://localhost:3000}
+      - SMTP_URL=${SMTP_URL:-smtp://mailpit:1025}
+      - MAIL_FROM=${MAIL_FROM:-Invoice Maker <no-reply@invoice-maker.local>}
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/templates"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  pgdata:

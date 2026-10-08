@@ -2,11 +2,11 @@
 
 ## Project Overview
 
-A Node.js/Express web application with SQLite database for generating professional invoices and receipts. The app will be Dockerized for cross-platform compatibility.
+A Node.js/Express web application with PostgreSQL database for generating professional invoices and receipts. The app will be Dockerized for cross-platform compatibility.
 
 ### Tech Stack
 - **Backend**: Node.js with Express
-- **Database**: SQLite
+- **Database**: PostgreSQL (`pg`)
 - **PDF Generation**: To be determined (e.g., PDFKit, Puppeteer)
 - **Containerization**: Docker & Docker Compose
 
@@ -222,50 +222,62 @@ Templates allow users to save company configurations for reuse:
 ### Requirements
 - Dockerfile for the Node.js application
 - Docker Compose for easy deployment
-- Volume for SQLite database persistence
+- Postgres service with a named volume for persistence
 - Volume for uploaded images (logos, stamps, signatures)
 - Environment variables for configuration
 
 ### docker-compose.yml Structure
 ```yaml
 services:
+  db:
+    image: postgres:18-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql   # Postgres data
   app:
     build: .
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/app/data        # SQLite database
       - ./uploads:/app/uploads  # Uploaded images
     environment:
       - NODE_ENV=production
+      - DATABASE_URL=postgres://invoices:...@db:5432/invoices
+    depends_on:
+      db:
+        condition: service_healthy
 ```
 
 ---
 
 ## PDF Generation Requirements
 
-### Invoice PDF Layout
-1. Header with logo (left) and company info (right)
-2. "INVOICE" title
-3. Two-column section: Client info (left) | Invoice No + Date (right)
-4. Line items table with 4 columns
-5. Total row
+### Invoice PDF Layout (reference: Bosnian "faktura" ST-0726-001)
+1. Three-column header: My company (left) | Logo (center) | Bank info incl. Tr. račun (right)
+2. Document details (Broj fakture, Datum, Mjesto izdavanja, Način plaćanja, Broj fiskalnog računa, Broj ugovora) | Client (Kupac, Adresa, Grad, JIB)
+3. Line items table with 5 columns (No., Opis, Cijena bez PDV, PDV, Ukupno) + ∑ row
+4. Summary table (Iznos bez PDV / PDV / Iznos sa PDV)
+5. PODACI O PDV (template VAT note), NAPOMENA (invoice notes), BIHUPP10 payment QR (`backend/services/bihupp.js`)
+6. Signature lines (signatory | Zaprimio), footer with full contact info
 
-### Receipt PDF Layout
-1. Three-column header: My company (left) | Logo (center) | Bank info (right)
-2. Document details section with client info
-3. Line items table with 5 columns (No., Description, Price w/o VAT, VAT, Sum)
-4. Summary table with currency conversions
-5. VAT explanation (bilingual)
-6. Signature section with stamp
-7. Footer with full contact info
+### Receipt PDF Layout (reference: ST-1225-001)
+1. Logo + "RECEIPT" title (left) | Company and bank info (right)
+2. ISSUED TO client info | Receipt No + Date
+3. Line items table with 4 columns (Description, Unit Price, QTY, Total) + TOTAL row
+
+### Document Design (per template)
+- `invoice_layout` / `receipt_layout`: `classic` (the two layouts above) or `modern`, `minimal`, `sidebar` (`backend/services/layouts.js`, shared by both document types via a document model built in `pdfGenerator.js`)
+- `background_color`, `pattern` (10 SVG patterns in `backend/services/patterns.js`), `pattern_color`, `pattern_placement` (bottom/top/corner/full), `pattern_opacity`
+- PDFs use zero page margins: `.page` padding is cloned onto every page (`box-decoration-break: clone`) and the pattern/footer are `position: fixed`, so backgrounds reach the paper edge on every page
+- `GET /api/{invoices,receipts}/:id/pdf?bw=1` renders the ink-saver black & white version
+- Document text follows the signed-in user's `language` setting (`en`/`bs`; `TEXT` in `pdfGenerator.js`): INVOICE/FAKTURA, RECEIPT/RAČUN, labels, and the template's `vat_note_en` vs `vat_note_local`. UI strings: `frontend/src/i18n.js`, keyed by the English text (`i18n.test.js` fails on untranslated `t('...')` keys)
+- `POST /api/templates/preview` returns sample-document HTML for the live preview in the template form
 
 ---
 
 ## TODO (Implementation Order)
 
 1. [ ] Set up project structure (Node.js/Express)
-2. [ ] Configure SQLite database with schema
+2. [ ] Configure PostgreSQL database with schema
 3. [ ] Create Docker configuration
 4. [ ] Build API endpoints for templates
 5. [ ] Build API endpoints for invoices

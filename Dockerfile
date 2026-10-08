@@ -1,18 +1,18 @@
-# Build stage for client
-FROM node:20-alpine AS client-builder
+# Build stage for frontend
+FROM node:20-alpine AS frontend-builder
 
-WORKDIR /app/client
+WORKDIR /app/frontend
 
-# Copy client package files
-COPY client/package*.json ./
+# Copy frontend package files
+COPY frontend/package*.json ./
 
-# Install client dependencies
+# Install frontend dependencies
 RUN npm install
 
-# Copy client source
-COPY client/ ./
+# Copy frontend source
+COPY frontend/ ./
 
-# Build client
+# Build frontend
 RUN npm run build
 
 # Production stage
@@ -26,7 +26,9 @@ RUN apk add --no-cache \
     freetype-dev \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    font-liberation \
+    font-opensans
 
 # Tell Puppeteer to skip installing Chromium. We'll use the installed package.
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
@@ -34,25 +36,24 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 
 WORKDIR /app
 
-# Copy server package files
+# Copy backend package files
 COPY package*.json ./
 
 # Install production dependencies only
 RUN npm install --production
 
-# Copy server source
-COPY server/ ./server/
+# Copy backend source
+COPY backend/ ./backend/
 
-# Copy built client from builder stage
-COPY --from=client-builder /app/client/dist ./client/dist
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Create directories for data and uploads
-RUN mkdir -p /app/data /app/uploads
+# Create directory for uploads
+RUN mkdir -p /app/uploads
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV DATABASE_PATH=/app/data/db.sqlite
 ENV UPLOAD_DIR=/app/uploads
 
 # Expose port
@@ -60,7 +61,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/templates || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 # Start the application
-CMD ["node", "server/index.js"]
+CMD ["node", "backend/index.js"]
