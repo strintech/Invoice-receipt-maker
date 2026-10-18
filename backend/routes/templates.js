@@ -2,7 +2,6 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
 const db = require('../database/init');
 const { buildInvoiceHTML, buildReceiptHTML } = require('../services/pdfGenerator');
 const { LAYOUTS } = require('../services/layouts');
@@ -13,20 +12,10 @@ const router = express.Router();
 // Multipart bodies send booleans as strings, so "false" must not count as true
 const isTrue = (v) => v === true || v === 'true' || v === '1' || v === 'on';
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = process.env.UPLOAD_DIR || './uploads';
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  }
-});
-
+// Images are stored in the template row as data URLs (hosting disks are ephemeral).
+// ponytail: fine for logos/stamps/signatures; move to object storage if images get large or many
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 // 5MB default
   },
@@ -49,9 +38,16 @@ const uploadFields = upload.fields([
   { name: 'signature', maxCount: 1 }
 ]);
 
-// Helper to delete old file
+// MIME type from the extension (checked by fileFilter), never the client-sent one, so it's always image/*
+const toDataUrl = (file) => {
+  const ext = path.extname(file.originalname).toLowerCase().slice(1);
+  const mimeType = ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+  return `data:${mimeType};base64,${file.buffer.toString('base64')}`;
+};
+
+// Helper to delete old file (paths from before images were stored as data URLs)
 const deleteFile = (filePath) => {
-  if (filePath) {
+  if (filePath && !filePath.startsWith('data:')) {
     const fullPath = path.resolve(filePath);
     if (fs.existsSync(fullPath)) {
       fs.unlinkSync(fullPath);
@@ -143,9 +139,9 @@ router.post('/', uploadFields, async (req, res) => {
     const files = req.files || {};
 
     // Handle file paths
-    const logoPath = files.logo ? files.logo[0].path : null;
-    const stampPath = files.stamp ? files.stamp[0].path : null;
-    const signaturePath = files.signature ? files.signature[0].path : null;
+    const logoPath = files.logo ? toDataUrl(files.logo[0]) : null;
+    const stampPath = files.stamp ? toDataUrl(files.stamp[0]) : null;
+    const signaturePath = files.signature ? toDataUrl(files.signature[0]) : null;
 
     const template = await db.one(`
       INSERT INTO templates (
@@ -229,15 +225,15 @@ router.put('/:id', uploadFields, async (req, res) => {
 
     if (files.logo) {
       deleteFile(existing.logo_path);
-      logoPath = files.logo[0].path;
+      logoPath = toDataUrl(files.logo[0]);
     }
     if (files.stamp) {
       deleteFile(existing.stamp_path);
-      stampPath = files.stamp[0].path;
+      stampPath = toDataUrl(files.stamp[0]);
     }
     if (files.signature) {
       deleteFile(existing.signature_path);
-      signaturePath = files.signature[0].path;
+      signaturePath = toDataUrl(files.signature[0]);
     }
 
     // Handle explicit removal of files

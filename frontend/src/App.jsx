@@ -10,6 +10,7 @@ import Clients from './pages/Clients'
 import Settings from './pages/Settings'
 import { Login, Register, Verify } from './pages/Auth'
 import { PrefsContext, translate } from './i18n'
+import { setToken } from './api'
 
 // Before sign-in (and while checking the session) use the last language/theme from this device
 const loadPrefs = () => {
@@ -28,6 +29,7 @@ function App() {
 
   // Signed in, the account's settings win
   const signIn = (account) => {
+    if (account?.token) setToken(account.token)
     setUser(account)
     if (account) setPrefsState({ language: account.language, theme: account.theme })
   }

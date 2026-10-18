@@ -10,6 +10,8 @@ const scrypt = promisify(crypto.scrypt);
 const SCRYPT_OPTS = { N: 2 ** 15, maxmem: 64 * 1024 * 1024 };
 const SESSION_DAYS = 30;
 const LINK_TTL_MINUTES = 15;
+// Accounts are confirmed at sign-up (no email sent) until production SMTP is set up
+const SKIP_EMAIL_VERIFICATION = process.env.SKIP_EMAIL_VERIFICATION === 'true';
 // Magic links point here; never derive it from request headers (lets an attacker redirect the link)
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 const USERNAME_RE = /^[A-Za-z0-9_.]{3,32}$/;
@@ -43,7 +45,8 @@ const verifyPassword = async (password, stored) => {
 const dummyHash = hashPassword(crypto.randomUUID());
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
-const readToken = (req) => req.headers.cookie?.match(/(?:^|;\s*)sid=([^;]+)/)?.[1];
+// Bearer token, not a cookie: the frontend is on another origin and Safari blocks cross-site cookies
+const readToken = (req) => req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
 const publicUser = ({ id, username, identifier, email, language, theme }) => ({ id, username, identifier, email, language, theme });
 const maskEmail = (email) => email.replace(/^(.)[^@]*/, '$1***');
 
@@ -69,19 +72,15 @@ const issueLink = async (client, user) => {
   });
 };
 
-const startSession = async (req, res, userId) => {
+// Returns the token; the client sends it back as `Authorization: Bearer <token>`
+const startSession = async (userId) => {
   const token = crypto.randomBytes(32).toString('base64url');
   await db.run('DELETE FROM sessions WHERE expires_at < now()');
   await db.run(
     `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, now() + make_interval(days => $3))`,
     [sha256(token), userId, SESSION_DAYS]
   );
-  res.cookie('sid', token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: req.secure,
-    maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000
-  });
+  return token;
 };
 
 const requireAuth = async (req, res, next) => {
@@ -128,14 +127,18 @@ router.post('/register', async (req, res, next) => {
     const passwordHash = await hashPassword(password);
     try {
       // If the email can't be sent, the account isn't created either
-      await db.tx(async (client) => {
+      const user = await db.tx(async (client) => {
         const { rows: [user] } = await client.query(`
-          INSERT INTO users (username, identifier, email, password_hash, language, theme)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO users (username, identifier, email, password_hash, language, theme, email_verified)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING *
-        `, [username, crypto.randomInt(10000).toString().padStart(4, '0'), email, passwordHash, language, theme]);
-        await issueLink(client, user);
+        `, [username, crypto.randomInt(10000).toString().padStart(4, '0'), email, passwordHash, language, theme, SKIP_EMAIL_VERIFICATION]);
+        if (!SKIP_EMAIL_VERIFICATION) await issueLink(client, user);
+        return user;
       });
+      if (SKIP_EMAIL_VERIFICATION) {
+        return res.status(201).json({ ...publicUser(user), token: await startSession(user.id) });
+      }
     } catch (error) {
       if (error.code === '23505') {
         const field = error.constraint === 'users_email_key' ? 'Email' : 'Username';
@@ -179,8 +182,7 @@ router.post('/login', async (req, res, next) => {
       await issueLink(db.pool, user);
       return res.status(202).json({ email: maskEmail(user.email) });
     }
-    await startSession(req, res, user.id);
-    res.json(publicUser(user));
+    res.json({ ...publicUser(user), token: await startSession(user.id) });
   } catch (error) {
     next(error);
   }
@@ -199,8 +201,7 @@ router.post('/verify', async (req, res, next) => {
       return res.status(400).json({ error: 'This link is invalid or has expired. Sign in again to get a new one.' });
     }
 
-    await startSession(req, res, user.id);
-    res.json(publicUser(user));
+    res.json({ ...publicUser(user), token: await startSession(user.id) });
   } catch (error) {
     next(error);
   }
@@ -213,7 +214,6 @@ router.post('/logout', async (req, res, next) => {
     if (token) {
       await db.run('DELETE FROM sessions WHERE token_hash = $1', [sha256(token)]);
     }
-    res.clearCookie('sid');
     res.json({ message: 'Logged out' });
   } catch (error) {
     next(error);

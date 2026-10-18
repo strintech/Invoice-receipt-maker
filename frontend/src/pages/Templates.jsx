@@ -242,7 +242,7 @@ function TemplateForm() {
       })
       for (const field of IMAGE_FIELDS) {
         const filePath = data[`${field}_path`]
-        if (filePath) setPreviews(prev => ({ ...prev, [field]: '/uploads/' + filePath.split('/').pop() }))
+        if (filePath) setPreviews(prev => ({ ...prev, [field]: filePath.startsWith('data:') ? filePath : '/uploads/' + filePath.split('/').pop() }))
       }
     } catch (error) {
       console.error('Error fetching template:', error)

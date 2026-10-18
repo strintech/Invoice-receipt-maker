@@ -31,7 +31,7 @@ RUN apk add --no-cache \
     font-opensans
 
 # Tell Puppeteer to skip installing Chromium. We'll use the installed package.
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /app

@@ -47,6 +47,7 @@ const fmt = (amount) => {
 
 const getImageDataUrl = (imagePath) => {
   if (!imagePath) return null;
+  if (imagePath.startsWith('data:')) return imagePath;
   try {
     const absolutePath = path.resolve(imagePath);
     if (!fs.existsSync(absolutePath)) return null;

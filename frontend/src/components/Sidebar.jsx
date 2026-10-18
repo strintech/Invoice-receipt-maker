@@ -1,11 +1,13 @@
 import { NavLink } from 'react-router-dom'
 import { useT } from '../i18n'
+import { setToken } from '../api'
 
 function Sidebar({ user, onLogout }) {
   const t = useT()
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
+    setToken(null)
     onLogout()
   }
 

@@ -1,0 +1,7 @@
+{
+  "hosting": {
+    "public": "frontend/dist",
+    "predeploy": "npm run build",
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  }
+}
