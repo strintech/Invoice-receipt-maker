@@ -100,11 +100,6 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
-// ponytail: in-memory per-process lockout keyed by IP; move to the DB if the app ever runs as multiple instances
-const MAX_FAILURES = 10;
-const LOCKOUT_MS = 15 * 60 * 1000;
-const failures = new Map();
-
 // POST register
 router.post('/register', async (req, res, next) => {
   try {
@@ -156,12 +151,6 @@ router.post('/register', async (req, res, next) => {
 // POST login with username or email
 router.post('/login', async (req, res, next) => {
   try {
-    const now = Date.now();
-    const attempts = failures.get(req.ip);
-    if (attempts?.until > now && attempts.count >= MAX_FAILURES) {
-      return res.status(429).json({ error: 'Too many failed attempts. Try again in 15 minutes.' });
-    }
-
     const login = String(req.body.login ?? '').trim();
     const password = String(req.body.password ?? '');
 
@@ -172,11 +161,9 @@ router.post('/login', async (req, res, next) => {
     const valid = await verifyPassword(password, user ? user.password_hash : await dummyHash);
 
     if (!user || !valid) {
-      failures.set(req.ip, { count: attempts?.until > now ? attempts.count + 1 : 1, until: now + LOCKOUT_MS });
       return res.status(401).json({ error: 'Invalid username/email or password' });
     }
 
-    failures.delete(req.ip);
     if (!user.email_verified) {
       // Confirmation link never opened (or expired): send a fresh one instead of signing in
       await issueLink(db.pool, user);

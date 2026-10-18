@@ -76,7 +76,7 @@ function App() {
         <Navbar className="navbar-floating" />
         <Routes>
           <Route path="/login" element={<Login onAuth={signIn} />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={<Register onAuth={signIn} />} />
           <Route path="/verify" element={<Verify onAuth={signIn} />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

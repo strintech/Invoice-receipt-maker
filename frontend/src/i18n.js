@@ -47,7 +47,6 @@ export const BS = {
   'Back to sign in': 'Nazad na prijavu',
   'Signing you in...': 'Prijavljivanje...',
   'Invalid username/email or password': 'Pogrešno korisničko ime/email ili lozinka',
-  'Too many failed attempts. Try again in 15 minutes.': 'Previše neuspjelih pokušaja. Pokušajte ponovo za 15 minuta.',
   'Email is already taken': 'Email je već zauzet',
   'Username is already taken': 'Korisničko ime je već zauzeto',
   'Enter a valid email address': 'Unesite ispravnu email adresu',

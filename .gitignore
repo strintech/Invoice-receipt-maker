@@ -30,3 +30,6 @@ npm-debug.log*
 
 # Docker
 .docker/
+
+# Firebase CLI cache
+.firebase/

@@ -21,7 +21,8 @@ const post = async (url, body) => {
   return data
 }
 
-// Register emails a confirmation link (see Verify). Login signs in directly, unless the email
+// Register emails a confirmation link (see Verify), or signs in directly when the API skips
+// verification (SKIP_EMAIL_VERIFICATION). Login signs in directly, unless the email
 // isn't confirmed yet: then the API sends a new link and returns only the masked address.
 function useAuthForm(initial, url, onAuth) {
   const { language, theme, t } = usePrefs()
@@ -102,10 +103,10 @@ export function Login({ onAuth }) {
   )
 }
 
-export function Register() {
+export function Register({ onAuth }) {
   const t = useT()
   const { formData, error, loading, sentTo, handleChange, handleSubmit } =
-    useAuthForm({ username: '', email: '', password: '' }, '/api/auth/register')
+    useAuthForm({ username: '', email: '', password: '' }, '/api/auth/register', onAuth)
 
   const checks = PASSWORD_RULES.map(([re, label]) => ({ label, ok: re.test(formData.password) }))
   const strong = checks.every(check => check.ok)

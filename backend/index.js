@@ -24,9 +24,6 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Proxy hops in front of the app (Firebase Hosting -> Cloud Run); needed for req.secure and req.ip
-app.set('trust proxy', Number(process.env.TRUST_PROXY) || false);
-
 // Middleware
 app.use(cors());
 app.use(express.json());

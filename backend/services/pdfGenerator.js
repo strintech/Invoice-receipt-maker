@@ -563,7 +563,10 @@ const generatePDFFromHTML = async (html) => {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    // 'networkidle0' hangs intermittently on a starved CPU (Render free = 0.1 CPU); images are inline,
+    // so 'load' plus the web fonts is everything the page needs
+    await page.setContent(html, { waitUntil: 'load' });
+    await page.evaluate(() => document.fonts.ready);
 
     // Margins are zero; each layout pads its .page instead (see renderPage)
     return await page.pdf({ format: 'A4', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });

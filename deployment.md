@@ -1,59 +1,51 @@
 # Deployment notes
 
-Planned setup: frontend on Cloudflare, backend and Postgres on a DigitalOcean Droplet.
+Live setup, all on free tiers with no billing account:
 
-## Environment variables
+| Part | Where | URL |
+|------|-------|-----|
+| Frontend (static) | Firebase Hosting, project `invoice-maker-ccc8f` (Spark plan) | https://invoice-maker-ccc8f.web.app |
+| Backend (Docker) | Render free web service, auto-deploys `main` | https://invoice-receipt-maker.onrender.com |
+| Postgres 18 | Neon free, project `weathered-salad-93944147` (aws-us-east-2) | — |
 
-Set these in `.env` next to `docker-compose.yml` on the server:
+Firebase's free plan can't run server code (Cloud Run, Functions and App Hosting all need Blaze), so the API lives on Render and the frontend calls it cross-origin. That is why sign-in uses a bearer token (`frontend/src/api.js`) instead of a cookie: Safari blocks cross-site cookies.
+
+## Deploying
+
+- **Backend:** push to `main`; Render rebuilds the `Dockerfile`.
+- **Frontend:** `firebase deploy --only hosting` (runs `npm run build` first). The API URL is baked in at build time from `frontend/.env.production` (`VITE_API_URL`).
+
+## Render environment variables
 
 | Variable | Value |
 |----------|-------|
-| `APP_URL` | Public frontend URL, e.g. `https://app.example.com`. Email confirmation links point here, so it must be the real public URL. |
-| `SMTP_URL` | SMTP connection of your mail provider (see below). URL-encode special characters in the username/password. |
-| `MAIL_FROM` | Sender, e.g. `Invoice Maker <no-reply@example.com>`. The domain must be verified with the mail provider. |
-| `POSTGRES_PASSWORD` | Database password (defaults to `invoices`, so change it). |
+| `DATABASE_URL` | Neon connection string: `npx neonctl connection-string --project-id weathered-salad-93944147` |
+| `APP_URL` | `https://invoice-maker-ccc8f.web.app` (emailed links point here) |
+| `SKIP_EMAIL_VERIFICATION` | `true` for now: accounts are confirmed at sign-up and no email is sent. |
 
-Then remove the `mailpit` service from `docker-compose.yml` (it's only a test inbox) and run:
+## Turning email verification back on
 
-```bash
-docker compose up -d --build
-```
+Render's free tier blocks outbound SMTP on ports 25, 465 and 587 (since Sept 2025), so Gmail SMTP won't work from there. Use a provider that accepts SMTP on another port, then set `SMTP_URL`, `MAIL_FROM` and remove `SKIP_EMAIL_VERIFICATION`:
 
-## Sending email from DigitalOcean
+- **Postmark:** `smtp://<server-token>:<server-token>@smtp.postmarkapp.com:2525`. 100 emails/month free.
+- **Resend:** SMTP on port 2587 (STARTTLS) or 2465 (TLS). 3,000/month free, 100/day.
+- Or send through a provider's HTTP API, which needs a small change in `backend/services/mailer.js`.
 
-DigitalOcean blocks outbound SMTP ports **25, 465 and 587** on Droplets and generally won't unblock them for new accounts. The mail provider has to accept SMTP on another port (usually 2525) or be used through its HTTP API.
+Add the provider's SPF, DKIM and DMARC records for the sending domain, or emails land in spam.
 
-## Which mail provider
+## Free tier limits
 
-1. **Postmark (recommended).** Built for transactional mail like sign-in links and known for fast delivery. It accepts SMTP on port 2525, so it works from DigitalOcean with only a settings change:
-   ```
-   SMTP_URL=smtp://<server-api-token>:<server-api-token>@smtp.postmarkapp.com:2525
-   ```
-   (The Server API token is both the username and the password.) About $15/month for 10,000 emails, 100/month free for testing.
-2. **Resend.** 3,000 emails/month free (max 100/day), then $20/month for 50,000. Not confirmed whether its SMTP accepts a port DigitalOcean doesn't block. If not, use its HTTP API, which needs a small change in `backend/services/mailer.js`.
-3. **Amazon SES.** Cheapest at high volume ($0.10 per 1,000 emails), but more setup: you have to request to leave its sandbox mode before sending to real users.
-4. **Cloudflare Email Service.** Not a fit yet. Still in beta, needs the Workers Paid plan, and sends from Cloudflare Workers, while the backend lives on DigitalOcean.
-
-## DNS (Cloudflare)
-
-Add the provider's **SPF**, **DKIM** and **DMARC** records for the sending domain, or sign-in emails will land in spam.
-
-## Cloudflare in front of the backend
-
-- **Serve `/api` from the same domain as the frontend** (Cloudflare proxies `/api/*` to the Droplet). The frontend calls relative `/api` URLs and the login cookie is `SameSite=Lax`, so this works without code changes. A separate API origin (e.g. `api.example.com`) would need CORS with credentials and `credentials: 'include'` on every fetch.
-- **Enable `trust proxy`** in `backend/index.js` (`app.set('trust proxy', 1)`, one per proxy hop). Without it, `req.secure` is false, so the session cookie isn't marked HTTPS-only. And `req.ip` is Cloudflare's address, so one person's failed logins lock everyone out.
-- **Firewall the Droplet to Cloudflare's IP ranges.** With `trust proxy` on, a request sent straight to the Droplet could fake its IP in `X-Forwarded-For` and dodge the login lockout.
+- **Render free:** 0.1 CPU and 512 MB. A PDF takes about 10s. The service sleeps after 15 minutes idle, and the first request after that takes about a minute. The disk is wiped on every restart, so uploaded images are stored in the database as data URLs.
+- **Neon free:** 0.5 GB storage. The compute pauses when idle; the first query after that is a little slower.
 
 ## Known limitations
 
-- **Unconfirmed accounts block their email address.** If someone registers with your email and never opens the confirmation link, the address shows as "already taken". Cleaning up unconfirmed accounts would fix this.
-- **The failed-login lockout lives in memory.** It resets when the server restarts and isn't shared between instances. Move it to the database if the backend ever runs as more than one instance.
 - **Data is shared between accounts.** Invoices, receipts, templates and clients aren't scoped per user or organization yet.
+- **No failed-login lockout.** It was removed on request. Password guessing is only slowed by scrypt hashing.
+- **Unconfirmed accounts block their email address** (only once email verification is back on). If someone registers with your email and never opens the link, the address shows as "already taken".
+- **Uploaded images live in the template row.** Fine for logos, stamps and signatures. Move them to object storage if images get large or numerous.
 
 ## Sources
 
-- [DigitalOcean: Why is SMTP blocked?](https://docs.digitalocean.com/support/why-is-smtp-blocked/)
-- [Resend vs Amazon SES vs Postmark (2026)](https://www.buildmvpfast.com/blog/resend-vs-ses-vs-postmark-transactional-email-deliverability-saas-2026)
-- [Email service pricing at 1K, 10K, 100K](https://blog.vibecoder.me/email-service-pricing-resend-sendgrid-postmark)
-- [Cloudflare Email Service pricing](https://developers.cloudflare.com/email-service/platform/pricing/)
-- [SMTP ports explained (2525)](https://www.captaindns.com/it/blog/smtp-ports-explained)
+- [Render: free web services block outbound SMTP](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports)
+- [Render free tier docs](https://render.com/docs/free)
